@@ -1,16 +1,16 @@
 use crate::cpu::Cpu6502;
 
 pub struct Cartridge {
-    prg_rom: Vec<u8>,
-    chr_rom: Vec<u8>,
-    metadata: RomMetadata
+    pub prg_rom: Vec<u8>,
+    pub chr_rom: Vec<u8>,
+    pub metadata: RomMetadata
 }
 
-struct RomMetadata {
-    prg_rom_size_bytes : usize,
-    chr_rom_size_bytes: usize,
-    mirroring_vert: u8,
-    mapper_number: u8,
+pub struct RomMetadata {
+    pub prg_rom_size_bytes : usize,
+    pub chr_rom_size_bytes: usize,
+    pub mirroring_vert: u8,
+    pub mapper_number: u8,
 
 
 }
@@ -23,13 +23,13 @@ impl Cartridge {
 
         let metadata = RomMetadata {
             prg_rom_size_bytes: rom_data[4] as usize * 16384,
-            chr_rom_size_bytes: rom_data[5] as usize * 16384,
+            chr_rom_size_bytes: rom_data[5] as usize * 8192,
             mirroring_vert: rom_data[6] & 0x01,
             mapper_number: ((rom_data[7] & 0xF0) <<4) | ((rom_data[6] & 0xF0) >> 4) ,
         };
         Cartridge {
-            prg_rom: rom_data[16..metadata.prg_rom_size_bytes as usize].to_vec(),
-            chr_rom: rom_data[16 + metadata.prg_rom_size_bytes as usize..].to_vec(),
+            prg_rom: rom_data[16..16 + metadata.prg_rom_size_bytes as usize].to_vec(),
+            chr_rom: rom_data[16 + metadata.prg_rom_size_bytes as usize.. 16 + metadata.prg_rom_size_bytes + metadata.chr_rom_size_bytes].to_vec(),
             metadata
         }
 
