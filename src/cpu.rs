@@ -87,6 +87,40 @@ impl Cpu6502 {
             0x50 => self.bvc_relative(),
             0x70 => self.bvs_relative(),
 
+            0xC9 => self.cmp_immediate(),
+            0xC5 => self.cmp_zero_page(),
+            0xCD => self.cmp_absolute(),
+
+            0xE0 => self.cpx_immediate(),
+            0xE4 => self.cpx_zero_page(),
+            0xEC => self.cpx_absolute(),
+
+            0xC0 => self.cpy_immediate(),
+            0xC4 => self.cpy_zero_page(),
+            0xCC => self.cpy_absolute(),
+
+            0x69 => self.adc_immediate(),
+            0x65 => self.adc_zero_page(),
+            0x75 => self.adc_zero_page_x(),
+            0x6D => self.adc_absolute(),
+            0x7D => self.adc_absolute_x(),
+            0x79 => self.adc_absolute_y(),
+            0x61 => self.adc_indirect_x(),
+            0x71 => self.adc_indirect_y(),
+
+            0xE9 => self.sbc_immediate(),
+            0xE5 => self.sbc_zero_page(),
+            0xF5 => self.sbc_zero_page_x(),
+            0xED => self.sbc_absolute(),
+            0xFD => self.sbc_absolute_x(),
+            0xF9 => self.sbc_absolute_y(),
+            0xE1 => self.sbc_indirect_x(),
+            0xF1 => self.sbc_indirect_y(),
+
+
+
+
+
 
 
 
@@ -132,6 +166,91 @@ impl Cpu6502 {
         self.sp = self.sp.wrapping_add(1);
         self.stack[self.sp as usize]
     }
+    // Addressing functions ________________________________________________________________________
+    fn get_zero_page_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let address = self.memory[self.pc as usize] as u16;
+        address
+    }
+
+    fn get_zero_page_x_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let address1 = self.memory[self.pc as usize] as u16;
+        let address2 = (address1 + self.x as u16) % 0x100;
+        address2
+    }
+
+    fn get_zero_page_y_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let address1 = self.memory[self.pc as usize] as u16;
+        let address2 = (address1 + self.y as u16) % 0x100;
+        address2
+    }
+
+    fn get_absolute_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let low_byte = self.memory[self.pc as usize] as u16;
+        self.pc += 1;
+        let high_byte = self.memory[self.pc as usize] as u16;
+        let absolute_address = (high_byte << 8) | low_byte;
+        absolute_address
+    }
+
+    fn get_absolute_x_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let low_byte = self.memory[self.pc as usize] as u16;
+        self.pc += 1;
+        let high_byte = self.memory[self.pc as usize] as u16;
+        let base_address = (high_byte << 8) | low_byte;
+        let absolute_address = base_address + self.x as u16;
+        absolute_address
+    }
+
+    fn get_absolute_y_addr(&mut self) -> (u16) {
+        self.pc += 1;
+        let low_byte = self.memory[self.pc as usize] as u16;
+        self.pc += 1;
+        let high_byte = self.memory[self.pc as usize] as u16;
+        let base_address = (high_byte << 8) | low_byte;
+        let absolute_address = base_address + self.y as u16;
+        absolute_address
+    }
+
+    fn get_indirect_x_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let address1 = self.memory[self.pc as usize] as u16;
+        let address2 = (address1 + self.x as u16) % 0x100;
+        let low_byte = self.memory[address2 as usize];
+        let high_byte = self.memory[((address2 + 1) % 0x100) as usize];
+        let pointer = (high_byte as u16) << 8 | low_byte as u16;
+        pointer
+    }
+
+    fn get_indirect_y_addr(&mut self) -> u16 {
+        self.pc += 1;
+        let pointer = self.memory[self.pc as usize] as u16;
+        let low_byte = self.memory[(pointer % 0x100) as usize];
+        let high_byte = self.memory[((pointer + 1) % 0x100) as usize] as u16;
+        let base_address = (high_byte << 8) | low_byte as u16;
+        let final_address = base_address + self.y as u16;
+        final_address
+    }
+
+    fn check_if_page_crossed45(&mut self, start: u16, end: u16) -> usize {
+        if  (start as u16 & 0xFF00) != (end & 0xFF00) {
+            5
+        } else {
+            4
+        }
+    }
+
+    fn check_if_page_crossed56(&mut self, start: u16, end: u16) -> usize {
+        if  (start as u16 & 0xFF00) != (end & 0xFF00) {
+            6
+        } else {
+            5
+        }
+    }
 
     // LDA opcodes _________________________________________________________________________________
     fn lda_immediate(&mut self) -> usize {
@@ -143,18 +262,17 @@ impl Cpu6502 {
     }
 
     fn lda_zero_page(&mut self) -> usize {
-        self.pc += 1;
-        let address = self.memory[self.pc as usize] as u16;
+        let address = self.get_zero_page_addr();
         self.a = self.memory[address as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
         3
     }
 
+
+
     fn lda_zero_page_x(&mut self) -> usize {
-        self.pc += 1;
-        let address1 = self.memory[self.pc as usize] as u16;
-        let address2 = (address1 + self.x as u16) % 0x100;
+        let address2 = self.get_zero_page_x_addr();
         self.a = self.memory[address2 as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
@@ -162,30 +280,23 @@ impl Cpu6502 {
     }
 
     fn lda_absolute(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let absolute_address = (high_byte << 8) | low_byte;
+        let absolute_address = self.get_absolute_addr();
         self.a = self.memory[absolute_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
         4
     }
 
+
     fn lda_absolute_x(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let base_address = (high_byte << 8) | low_byte;
-        let absolute_address = base_address + self.x as u16;
+        let base_address = self.memory[self.pc as usize];
+        let absolute_address = self.get_absolute_x_addr();
         self.a = self.memory[absolute_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
 
         // CHecks if a page boundary was crossed to determine number of cycles
-        if  (base_address & 0xFF00) != (absolute_address & 0xFF00) {
+        if  (base_address as u16 & 0xFF00) != (absolute_address & 0xFF00) {
             5
         } else {
             4
@@ -193,31 +304,23 @@ impl Cpu6502 {
     }
 
     fn lda_absolute_y(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let base_address = (high_byte << 8) | low_byte;
-        let absolute_address = base_address + self.y as u16;
+        let base_address = self.memory[self.pc as usize];
+        let absolute_address =  self.get_absolute_y_addr();
         self.a = self.memory[absolute_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
 
         // Checks if a page boundary was crossed to determine number of cycles
-        if  (base_address & 0xFF00) != (absolute_address & 0xFF00) {
+        if  (base_address as u16 & 0xFF00) != (absolute_address & 0xFF00) {
             5
         } else {
             4
         }
     }
 
+
     fn lda_indirect_x(&mut self) -> usize {
-        self.pc += 1;
-        let address1 = self.memory[self.pc as usize] as u16;
-        let address2 = (address1 + self.x as u16) % 0x100;
-        let low_byte = self.memory[address2 as usize];
-        let high_byte = self.memory[((address2 + 1) % 0x100) as usize] ;
-        let pointer = (high_byte as u16) << 8 | low_byte as u16;
+        let pointer = self.get_indirect_x_addr();
         self.a = self.memory[pointer as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
@@ -225,92 +328,64 @@ impl Cpu6502 {
     }
 
     fn lda_indirect_y(&mut self) -> usize {
-        self.pc += 1;
-        let pointer = self.memory[self.pc as usize] as u16;
-        let low_byte = self.memory[(pointer % 0x100) as usize];
-        let high_byte = self.memory[((pointer + 1) % 0x100)as usize] as u16;
-        let base_address = (high_byte << 8) | low_byte as u16;
-        let final_address = base_address + self.y as u16;
+        let base_address = self.memory[self.pc as usize];
+        let final_address = self.get_indirect_y_addr();
         self.a = self.memory[final_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        if  (base_address & 0xFF00) != (final_address & 0xFF00) {
+        if  (base_address as u16 & 0xFF00) != (final_address & 0xFF00) {
             6
         } else {
             5
         }
     }
+
+
+
     //STA opcodes _________________________________________________________________________________
     fn sta_zero_page(&mut self) -> usize {
-        self.pc += 1;
-        let address = self.memory[self.pc as usize] as u16;
+        let address = self.get_zero_page_addr();
         self.memory[address as usize] = self.a;
         self.pc += 1;
         3
     }
 
     fn sta_zero_page_x(&mut self) -> usize {
-        self.pc += 1;
-        let address = self.memory[self.pc as usize] as u16;
-        let xaddress = (address + self.x as u16) % 0x100;
+        let xaddress = self.get_zero_page_x_addr();
         self.memory[xaddress as usize] = self.a;
         self.pc += 1;
         4
     }
 
     fn sta_absolute(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let absolute_address = (high_byte << 8) | low_byte;
+        let absolute_address = self.get_absolute_addr();
         self.memory[absolute_address as usize] = self.a;
         4
     }
 
     fn sta_absolute_x(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let absolute_address = (high_byte << 8) | low_byte;
-        let final_address = absolute_address + self.x as u16;
+        let final_address = self.get_absolute_x_addr();
         self.memory[final_address as usize] = self.a;
         self.pc += 1;
         5
     }
 
     fn sta_absolute_y(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let absolute_address = (high_byte << 8) | low_byte;
-        let final_address = absolute_address + self.y as u16;
+        let final_address = self.get_absolute_y_addr();
         self.memory[final_address as usize] = self.a;
         self.pc += 1;
         5
     }
     fn sta_indirect_x(&mut self) -> usize {
-        self.pc += 1;
-        let address1 = self.memory[self.pc as usize];
-        let address2 = address1.wrapping_add(self.x);
-        let low_byte = self.memory[address2 as usize];
-        let high_byte = self.memory[address2.wrapping_add(1) as usize] ;
-        let pointer = (high_byte as u16) << 8 | low_byte as u16;
+        let pointer = self.get_indirect_x_addr();
         self.memory[pointer as usize] = self.a;
         self.pc += 1;
         6
     }
 
     fn sta_indirect_y(&mut self) -> usize {
-        self.pc += 1;
-        let pointer = self.memory[self.pc as usize];
-        let low_byte = self.memory[pointer as usize];
-        let high_byte = self.memory[pointer.wrapping_add(1) as usize] as u16;
-        let base_address = (high_byte << 8) | low_byte as u16;
-        let final_address = base_address + self.y as u16;
+        let final_address = self.get_indirect_y_addr();
         self.memory[final_address as usize] = self.a;
         self.pc += 1;
         6
@@ -326,8 +401,7 @@ impl Cpu6502 {
     }
 
     fn ldx_zero_page(&mut self) -> usize {
-        self.pc += 1;
-        let address = self.memory[self.pc as usize] as u16;
+        let address = self.get_zero_page_addr();
         self.x = self.memory[address as usize];
         self.pc += 1;
         self.update_nz_flags(self.x);
@@ -335,9 +409,7 @@ impl Cpu6502 {
     }
 
     fn ldx_zero_page_y(&mut self) -> usize {
-        self.pc += 1;
-        let address1 = self.memory[self.pc as usize];
-        let address2 = address1.wrapping_add(self.y);
+        let address2 = self.get_zero_page_y_addr();
         self.x = self.memory[address2 as usize];
         self.pc += 1;
         self.update_nz_flags(self.x);
@@ -345,11 +417,7 @@ impl Cpu6502 {
     }
 
     fn ldx_absolute(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let absolute_address = (high_byte << 8) | low_byte;
+        let absolute_address = self.get_absolute_addr();
         self.x = self.memory[absolute_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.x);
@@ -357,12 +425,8 @@ impl Cpu6502 {
     }
 
     fn ldx_absolute_y(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        let base_address = (high_byte << 8) | low_byte;
-        let absolute_address = base_address + self.y as u16;
+        let base_address = self.memory[self.pc as usize] as u16;
+        let absolute_address = self.get_absolute_y_addr();
         self.x = self.memory[absolute_address as usize];
         self.pc += 1;
         self.update_nz_flags(self.x);
@@ -420,11 +484,8 @@ impl Cpu6502 {
     // Jumps opcodes _______________________________________________________________________________
 
     fn jmp_absolute(&mut self) -> usize {
-        self.pc += 1;
-        let low_byte = self.memory[self.pc as usize] as u16;
-        self.pc += 1;
-        let high_byte = self.memory[self.pc as usize] as u16;
-        self.pc = (high_byte << 8) | low_byte;
+        let address = self.get_absolute_addr();
+        self.pc = address;
         3
     }
 
@@ -445,7 +506,7 @@ impl Cpu6502 {
         // Pushes high byte
         self.stack_push(((return_address - 1) >> 8) as u8);
         // Pushes low byte
-        self.stack_push(return_address as u8 - 1);
+        self.stack_push((return_address - 1) as u8);
         self.pc += 1;
         let low_byte = self.memory[self.pc as usize] as u16;
         self.pc += 1;
@@ -596,7 +657,435 @@ impl Cpu6502 {
             2
         }
     }
+
+    // Comparison opcodes __________________________________________________________________________
+
+    fn cmp_immediate(&mut self) -> usize {
+        self.pc += 1;
+        let (result, borrow) = (self.a).overflowing_sub(self.memory[self.pc as usize]);
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        2
+    }
+
+    fn cmp_zero_page(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_addr() as usize];
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        3
+    }
+
+    fn cmp_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        let value = self.memory[address as usize];
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        4
+    }
+
+    fn cpx_immediate(&mut self) -> usize {
+        self.pc += 1;
+        let (result, borrow) = self.x.overflowing_sub(self.memory[self.pc as usize]);
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        2
+    }
+
+    fn cpx_zero_page(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_addr() as usize];
+        let (result, borrow) = self.x.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        3
+    }
+
+    fn cpx_absolute(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        let value = self.memory[address as usize];
+        let (result, borrow) = self.x.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        4
+    }
+
+    fn cpy_immediate(&mut self) -> usize {
+        self.pc += 1;
+        let (result, borrow) = self.y.overflowing_sub(self.memory[self.pc as usize]);
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        2
+    }
+
+    fn cpy_zero_page(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_addr() as usize];
+        let (result, borrow) = self.y.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        3
+    }
+
+    fn cpy_absolute(&mut self) -> usize {
+        let value = self.memory[self.get_absolute_addr() as usize];
+        let (result, borrow) = self.y.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+        4
+    }
+
+    // Arithmatic opcodes __________________________________________________________________________
+
+    fn adc_immediate(&mut self) -> usize {
+        self.pc += 1;
+        let value = self.memory[self.pc as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        2
+    }
+
+    fn adc_zero_page(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_addr() as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        3
+    }
+
+    fn adc_zero_page_x(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_x_addr() as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        4
+    }
+
+
+    fn adc_absolute(&mut self) -> usize {
+        let value = self.memory[self.get_absolute_addr() as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        4
+    }
+    fn adc_absolute_x(&mut self) -> usize {
+        let start_addr = self.pc;
+        let end_addr = self.get_absolute_x_addr();
+        let value = self.memory[end_addr as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        self.check_if_page_crossed45(start_addr, end_addr)
+    }
+
+    fn adc_absolute_y(&mut self) -> usize {
+        let start_addr = self.pc;
+        let end_addr = self.get_absolute_y_addr();
+        let value = self.memory[end_addr as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        self.check_if_page_crossed45(start_addr, end_addr)
+
+    }
+
+    fn adc_indirect_x(&mut self) -> usize {
+        let end_addr = self.get_indirect_x_addr();
+        let value = self.memory[end_addr as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        6
+    }
+
+    fn adc_indirect_y(&mut self) -> usize {
+        let start_addr = self.pc;
+        let end_addr = self.get_indirect_y_addr();
+        let value = self.memory[end_addr as usize];
+        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+
+        self.set_flag(CARRY_FLAG, result > 255);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        self.check_if_page_crossed56(start_addr, end_addr)
+
+    }
+
+    
+
+    // Subtract with Carry _________________________________________________________________________
+    fn sbc_immediate(&mut self) -> usize {
+        self.pc += 1;
+        let value = self.memory[self.pc as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        2
+    }
+
+    fn sbc_zero_page(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_addr() as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        3
+    }
+
+    fn sbc_zero_page_x(&mut self) -> usize {
+        let value = self.memory[self.get_zero_page_x_addr() as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        3
+    }
+
+    fn sbc_absolute(&mut self) -> usize {
+        let value = self.memory[self.get_absolute_addr() as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        4
+    }
+
+    fn sbc_absolute_x(&mut self) -> usize {
+        let start_addr = self.pc;
+        let end_addr = self.get_absolute_x_addr();
+        let value = self.memory[end_addr as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        self.check_if_page_crossed45(start_addr, end_addr)
+    }
+
+    fn sbc_absolute_y(&mut self) -> usize {
+        let start_addr = self.pc as u16;
+        let end_addr = self.get_absolute_y_addr();
+        let value = self.memory[end_addr as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+
+        self.check_if_page_crossed45(start_addr, end_addr)
+    }
+
+    fn sbc_indirect_x(&mut self) -> usize {
+        let start_addr = self.pc as u16;
+        let end_addr = self.get_indirect_x_addr();
+        let value = self.memory[end_addr as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        6
+    }
+
+    fn sbc_indirect_y(&mut self) -> usize {
+        let start_addr = self.pc as u16;
+        let end_addr = self.get_indirect_y_addr();
+        let value = self.memory[end_addr as usize] as u16;
+        let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
+
+        self.set_flag(CARRY_FLAG, result < 256);
+        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+
+        let a_sign = self.a & 0x80;
+        let val_sign = value as u8 & 0x80;
+        let result_sign = result as u8 & 0x80;
+        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+
+        self.a = result as u8;
+        self.pc += 1;
+        self.check_if_page_crossed56(start_addr, end_addr)
+    }
 }
+
+
+
 
 
 
