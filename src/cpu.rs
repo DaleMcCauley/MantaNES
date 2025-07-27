@@ -308,24 +308,24 @@ impl Cpu6502 {
         absolute_address
     }
 
-    fn get_absolute_x_addr(&mut self) -> u16 {
+    fn get_absolute_x_addr(&mut self) -> (u16, u16) {
         self.pc += 1;
         let low_byte = self.bus.read(self.pc) as u16;
         self.pc += 1;
         let high_byte = self.bus.read(self.pc) as u16;
         let base_address = (high_byte << 8) | low_byte;
         let absolute_address = base_address + self.x as u16;
-        absolute_address
+        (base_address, absolute_address)
     }
 
-    fn get_absolute_y_addr(&mut self) -> (u16) {
+    fn get_absolute_y_addr(&mut self) -> (u16, u16) {
         self.pc += 1;
         let low_byte = self.bus.read(self.pc) as u16;
         self.pc += 1;
         let high_byte = self.bus.read(self.pc) as u16;
         let base_address = (high_byte << 8) | low_byte;
         let absolute_address = base_address + self.y as u16;
-        absolute_address
+        (base_address,absolute_address)
     }
 
     fn get_indirect_x_addr(&mut self) -> u16 {
@@ -338,14 +338,14 @@ impl Cpu6502 {
         pointer
     }
 
-    fn get_indirect_y_addr(&mut self) -> u16 {
+    fn get_indirect_y_addr(&mut self) -> (u16, u16) {
         self.pc += 1;
         let pointer = self.bus.read(self.pc) as u16;
         let low_byte = self.bus.read((pointer % 0x100));
         let high_byte = self.bus.read(((pointer + 1) % 0x100)) as u16;
         let base_address = (high_byte << 8) | low_byte as u16;
         let final_address = base_address + self.y as u16;
-        final_address
+        (base_address, final_address)
     }
 
     fn check_if_page_crossed45(&mut self, start: u16, end: u16) -> usize {
@@ -429,7 +429,7 @@ impl Cpu6502 {
     }
 
     fn rol_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let old_carry = self.check_carry_flag();
         let mut value = self.bus.read(address);
         self.bus.write(address, value);
@@ -463,7 +463,7 @@ impl Cpu6502 {
     fn ror_zero_page(&mut self) -> usize {
         let address = self.get_zero_page_addr();
         let old_carry = self.check_carry_flag();
-        let mut value = self.bus.read(address);
+        let value = self.bus.read(address);
         self.bus.write(address, value);
         let new_carry = (value & 0x01) != 0;
 
@@ -479,7 +479,7 @@ impl Cpu6502 {
     fn ror_zero_page_x(&mut self) -> usize {
         let address = self.get_zero_page_x_addr();
         let old_carry = self.check_carry_flag();
-        let mut value = self.bus.read(address);
+        let value = self.bus.read(address);
         self.bus.write(address, value);
         let new_carry = (value & 0x01) != 0;
 
@@ -495,7 +495,7 @@ impl Cpu6502 {
     fn ror_absolute(&mut self) -> usize {
         let address = self.get_absolute_addr();
         let old_carry = self.check_carry_flag();
-        let mut value = self.bus.read(address);
+        let value = self.bus.read(address);
         self.bus.write(address, value);
         let new_carry = (value & 0x01) != 0;
 
@@ -509,7 +509,7 @@ impl Cpu6502 {
     }
 
     fn ror_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let old_carry = self.check_carry_flag();
         let mut value = self.bus.read(address);
         self.bus.write(address, value);
@@ -604,7 +604,7 @@ impl Cpu6502 {
     }
 
     fn lsr_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let mut value = self.bus.read(address);
         let carry = value & 0x01 != 0;
         value >>= 1;
@@ -667,7 +667,7 @@ impl Cpu6502 {
     }
 
     fn asl_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let mut value = self.bus.read(address);
         let carry = value >> 7 != 0;
         value <<= 1;
@@ -780,7 +780,7 @@ impl Cpu6502 {
     }
 
     fn inc_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let mut value = self.bus.read(address);
         value += 1;
         self.bus.write(address, value);
@@ -856,7 +856,7 @@ impl Cpu6502 {
     }
 
     fn dec_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let mut value = self.bus.read(address);
         value -= 1;
         self.bus.write(address, value);
@@ -908,33 +908,23 @@ impl Cpu6502 {
 
 
     fn lda_absolute_x(&mut self) -> usize {
-        let base_address = self.bus.read(self.pc);
-        let absolute_address = self.get_absolute_x_addr();
+        let (base_address, absolute_address) = self.get_absolute_x_addr();
         self.a = self.bus.read(absolute_address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
         // CHecks if a page boundary was crossed to determine number of cycles
-        if  (base_address as u16 & 0xFF00) != (absolute_address & 0xFF00) {
-            5
-        } else {
-            4
-        }
+        self.check_if_page_crossed45(base_address, absolute_address)
     }
 
     fn lda_absolute_y(&mut self) -> usize {
-        let base_address = self.bus.read(self.pc);
-        let absolute_address =  self.get_absolute_y_addr();
+        let (base_address, absolute_address) =  self.get_absolute_y_addr();
         self.a = self.bus.read(absolute_address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
         // Checks if a page boundary was crossed to determine number of cycles
-        if  (base_address as u16 & 0xFF00) != (absolute_address & 0xFF00) {
-            5
-        } else {
-            4
-        }
+        self.check_if_page_crossed45(base_address, absolute_address)
     }
 
 
@@ -948,17 +938,12 @@ impl Cpu6502 {
     }
 
     fn lda_indirect_y(&mut self) -> usize {
-        let base_address = self.bus.read(self.pc);
-        let final_address = self.get_indirect_y_addr();
+        let (base_address, final_address) = self.get_indirect_y_addr();
         self.a = self.bus.read(final_address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        if  (base_address as u16 & 0xFF00) != (final_address & 0xFF00) {
-            6
-        } else {
-            5
-        }
+        self.check_if_page_crossed56(base_address, final_address)
     }
 
 
@@ -990,7 +975,7 @@ impl Cpu6502 {
 
     fn sta_absolute_x(&mut self) -> usize {
         let final_address = self.get_absolute_x_addr();
-        self.bus.write(final_address, self.a);
+        self.bus.write(final_address.1, self.a);
         self.pc += 1;
 
         5
@@ -998,7 +983,7 @@ impl Cpu6502 {
 
     fn sta_absolute_y(&mut self) -> usize {
         let final_address = self.get_absolute_y_addr();
-        self.bus.write(final_address, self.a);
+        self.bus.write(final_address.1, self.a);
         self.pc += 1;
 
         5
@@ -1013,7 +998,7 @@ impl Cpu6502 {
 
     fn sta_indirect_y(&mut self) -> usize {
         let final_address = self.get_indirect_y_addr();
-        self.bus.write(final_address, self.a);
+        self.bus.write(final_address.1, self.a);
         self.pc += 1;
 
         6
@@ -1107,18 +1092,12 @@ impl Cpu6502 {
     }
 
     fn ldx_absolute_y(&mut self) -> usize {
-        let base_address = self.bus.read(self.pc) as u16;
-        let absolute_address = self.get_absolute_y_addr();
+        let (base_address, absolute_address) = self.get_absolute_y_addr();
         self.x = self.bus.read(absolute_address);
         self.pc += 1;
         self.update_nz_flags(self.x);
 
-        // Checks if a page boundary was crossed to determine number of cycles
-        if  (base_address & 0xFF00) != (absolute_address & 0xFF00) {
-            5
-        } else {
-            4
-        }
+        self.check_if_page_crossed45(base_address, absolute_address)
     }
 
     // LDY (load y) opcodes ________________________________________________________________________
@@ -1159,8 +1138,7 @@ impl Cpu6502 {
     }
 
     fn ldy_absolute_x(&mut self) -> usize {
-        let base_address = self.bus.read(self.pc) as u16;
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         self.y = self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.y);
@@ -1472,7 +1450,7 @@ impl Cpu6502 {
     }
 
     fn cmp_absolute_y(&mut self) -> usize {
-        let address = self.get_absolute_y_addr();
+        let (base_address, address) = self.get_absolute_y_addr();
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
@@ -1486,7 +1464,7 @@ impl Cpu6502 {
     }
 
     fn cmp_absolute_x(&mut self) -> usize {
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
@@ -1516,8 +1494,7 @@ impl Cpu6502 {
 
 
     fn cmp_indirect_y(&mut self) -> usize {
-        let base_address = self.pc;
-        let address = self.get_indirect_y_addr();
+        let (base_address, address) = self.get_indirect_y_addr();
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
@@ -1695,8 +1672,7 @@ impl Cpu6502 {
         4
     }
     fn adc_absolute_x(&mut self) -> usize {
-        let start_addr = self.pc;
-        let end_addr = self.get_absolute_x_addr();
+        let (base_address, end_addr) = self.get_absolute_x_addr();
         let value = self.bus.read(end_addr);
         let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
 
@@ -1711,12 +1687,11 @@ impl Cpu6502 {
 
         self.a = result as u8;
         self.pc += 1;
-        self.check_if_page_crossed45(start_addr, end_addr)
+        self.check_if_page_crossed45(base_address, end_addr)
     }
 
     fn adc_absolute_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let end_addr = self.get_absolute_y_addr();
+        let (base_addr, end_addr) = self.get_absolute_y_addr();
         let value = self.bus.read(end_addr);
         let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
 
@@ -1731,7 +1706,7 @@ impl Cpu6502 {
 
         self.a = result as u8;
         self.pc += 1;
-        self.check_if_page_crossed45(start_addr, end_addr)
+        self.check_if_page_crossed45(base_addr, end_addr)
 
     }
 
@@ -1756,8 +1731,7 @@ impl Cpu6502 {
     }
 
     fn adc_indirect_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let end_addr = self.get_indirect_y_addr();
+        let (base_adress, end_addr) = self.get_indirect_y_addr();
         let value = self.bus.read(end_addr);
         let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
 
@@ -1772,7 +1746,7 @@ impl Cpu6502 {
 
         self.a = result as u8;
         self.pc += 1;
-        self.check_if_page_crossed56(start_addr, end_addr)
+        self.check_if_page_crossed56(base_adress, end_addr)
 
     }
 
@@ -1860,8 +1834,7 @@ impl Cpu6502 {
     }
 
     fn sbc_absolute_x(&mut self) -> usize {
-        let start_addr = self.pc;
-        let end_addr = self.get_absolute_x_addr();
+        let (base_addr, end_addr) = self.get_absolute_x_addr();
         let value = self.bus.read(end_addr) as u16;
         let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
 
@@ -1876,12 +1849,11 @@ impl Cpu6502 {
 
         self.a = result as u8;
         self.pc += 1;
-        self.check_if_page_crossed45(start_addr, end_addr)
+        self.check_if_page_crossed45(base_addr, end_addr)
     }
 
     fn sbc_absolute_y(&mut self) -> usize {
-        let start_addr = self.pc as u16;
-        let end_addr = self.get_absolute_y_addr();
+        let (base_addr, end_addr) = self.get_absolute_y_addr();
         let value = self.bus.read(end_addr) as u16;
         let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
 
@@ -1897,7 +1869,7 @@ impl Cpu6502 {
         self.a = result as u8;
         self.pc += 1;
 
-        self.check_if_page_crossed45(start_addr, end_addr)
+        self.check_if_page_crossed45(base_addr, end_addr)
     }
 
     fn sbc_indirect_x(&mut self) -> usize {
@@ -1921,8 +1893,7 @@ impl Cpu6502 {
     }
 
     fn sbc_indirect_y(&mut self) -> usize {
-        let start_addr = self.pc as u16;
-        let end_addr = self.get_indirect_y_addr();
+        let (base_address, end_addr) = self.get_indirect_y_addr();
         let value = self.bus.read(end_addr) as u16;
         let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
 
@@ -1937,7 +1908,7 @@ impl Cpu6502 {
 
         self.a = result as u8;
         self.pc += 1;
-        self.check_if_page_crossed56(start_addr, end_addr)
+        self.check_if_page_crossed56(base_address, end_addr)
     }
 
     // Logical operations __________________AND_____________________________________________________
@@ -1978,23 +1949,21 @@ impl Cpu6502 {
         4
     }
     fn and_absolute_x(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         self.a = self.a & self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn and_absolute_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_y_addr();
+        let (base_address, address) = self.get_absolute_y_addr();
         self.a = self.a & self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn and_indirect_x(&mut self) -> usize {
@@ -2006,13 +1975,12 @@ impl Cpu6502 {
         6
     }
     fn and_indirect_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_indirect_y_addr();
+        let (base_address, address) = self.get_indirect_y_addr();
         self.a = self.a & self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed56(start_addr, address)
+        self.check_if_page_crossed56(base_address, address)
     }
     // ORA opcode __________________________________________________________________________________
 
@@ -2053,23 +2021,21 @@ impl Cpu6502 {
     }
 
     fn ora_absolute_x(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         self.a = self.a | self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn ora_absolute_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_y_addr();
+        let (base_address, address) = self.get_absolute_y_addr();
         self.a = self.a | self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn ora_indirect_x(&mut self) -> usize {
@@ -2082,13 +2048,12 @@ impl Cpu6502 {
     }
 
     fn ora_indirect_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_indirect_y_addr();
+        let (base_adress, address) = self.get_indirect_y_addr();
         self.a = self.a | self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed56(start_addr, address)
+        self.check_if_page_crossed56(base_adress, address)
     }
     //EOR opcodes __________________________________________________________________________________
 
@@ -2129,23 +2094,21 @@ impl Cpu6502 {
     }
 
     fn eor_absolute_x(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_x_addr();
+        let (base_address, address) = self.get_absolute_x_addr();
         self.a = self.a ^ self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn eor_absolute_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_absolute_y_addr();
+        let (base_address, address) = self.get_absolute_y_addr();
         self.a = self.a ^ self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed45(start_addr, address)
+        self.check_if_page_crossed45(base_address, address)
     }
 
     fn eor_indirect_x(&mut self) -> usize {
@@ -2158,13 +2121,12 @@ impl Cpu6502 {
     }
 
     fn eor_indirect_y(&mut self) -> usize {
-        let start_addr = self.pc;
-        let address = self.get_indirect_y_addr();
+        let (base_address, address) = self.get_indirect_y_addr();
         self.a = self.a ^ self.bus.read(address);
         self.pc += 1;
         self.update_nz_flags(self.a);
 
-        self.check_if_page_crossed56(start_addr, address)
+        self.check_if_page_crossed56(base_address, address)
     }
 
     // BIT opcodes _________________________________________________________________________________
