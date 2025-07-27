@@ -1,4 +1,3 @@
-use std::ascii::Char::CapitalR;
 use crate::cartridge::Cartridge;
 
 use crate::bus::Bus;
@@ -21,6 +20,7 @@ const INTERRUPT_DISABLE_FLAG:u8 = 0b00000100;
 const DECIMAL_FLAG:u8 = 0b00001000;
 const OVERFLOW_FLAG:u8 = 0b01000000;
 const NEGATIVE_FLAG:u8 = 0b10000000;
+const BREAK_FLAG:u8 = 0b00010000;
 impl Cpu6502 {
 
     pub fn init_cpu() -> Cpu6502 {
@@ -28,8 +28,11 @@ impl Cpu6502 {
             a: 0,
             x: 0,
             y: 0,
+            // Program counter
             pc: 0,
+            // Stack Pointer
             sp: 0,
+            // Status flags
             p: 0,
             cycles: 0,
             bus: Bus::new(),
@@ -44,7 +47,14 @@ impl Cpu6502 {
         let opcode = self.bus.read(self.pc);
 // Main decoder hub
         let additional_cycles: usize = match opcode {
-            //ROL
+            // ROR
+            0x6A => self.ror_accumulator(),
+            0x66 => self.ror_zero_page(),
+            0x76 => self.ror_zero_page_x(),
+            0x6E => self.ror_absolute(),
+            0x7E => self.ror_absolute_x(),
+
+            // ROL
             0x2A => self.rol_accumulator(),
             0x26 => self.rol_zero_page(),
             0x36 => self.rol_zero_page_x(),
@@ -98,12 +108,26 @@ impl Cpu6502 {
             0x99 => self.sta_absolute_y(),
             0x81 => self.sta_indirect_x(),
             0x91 => self.sta_indirect_y(),
+            // Store X
+            0x86 => self.stx_zero_page(),
+            0x96 => self.stx_zero_page_y(),
+            0x8E => self.stx_absolute(),
+            // Store Y
+            0x84 => self.sty_zero_page(),
+            0x94 => self.sty_zero_page_x(),
+            0x8C => self.sty_absolute(),
             // Load X
             0xA2 => self.ldx_immediate(),
             0xA6 => self.ldx_zero_page(),
             0xB6 => self.ldx_zero_page_y(),
             0xAE => self.ldx_absolute(),
             0xBE => self.ldx_absolute_y(),
+            // Load Y
+            0xA0 => self.ldy_immediate(),
+            0xA4 => self.ldy_zero_page(),
+            0xB4 => self.ldy_zero_page_x(),
+            0xAC => self.ldy_absolute(),
+            0xBC => self.ldy_absolute_x(),
             // Transfer
             0xAA => self.tax_implied(),
             0xA8 => self.tay_implied(),
@@ -116,6 +140,8 @@ impl Cpu6502 {
             0x6C => self.jmp_indirect(),
             0x20 => self.jsr_absolute(),
             0x60 => self.rts_implied(),
+            0x00 => self.brk_implied(),
+            0x40 => self.rti_implied(),
             // Branching
             0xF0 => self.beq_relative(),
             0x90 => self.bcc_relative(),
@@ -419,8 +445,84 @@ impl Cpu6502 {
         7
     }
 
+    // ROR opcodes _________________________________________________________________________________
 
+    fn ror_accumulator(&mut self) -> usize {
+        let old_carry = self.check_carry_flag();
+        let new_carry = (self.a & 0x01) != 0;
 
+        self.a = (self.a >> 1) | ((old_carry as u8) << 7);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(self.a);
+        self.pc += 1;
+
+        2
+    }
+
+    fn ror_zero_page(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x01) != 0;
+
+        let result = (value >> 1) | ((old_carry as u8) << 7);
+        self.bus.write(address, result);
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(result);
+        self.pc += 1;
+
+        5
+    }
+
+    fn ror_zero_page_x(&mut self) -> usize {
+        let address = self.get_zero_page_x_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x01) != 0;
+
+        let result = (value >> 1) | ((old_carry as u8) << 7);
+        self.bus.write(address, result);
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(result);
+        self.pc += 1;
+
+        6
+    }
+
+    fn ror_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x01) != 0;
+
+        let result = (value >> 1) | ((old_carry as u8) << 7);
+        self.bus.write(address, result);
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(result);
+        self.pc += 1;
+
+        6
+    }
+
+    fn ror_absolute_x(&mut self) -> usize {
+        let address = self.get_absolute_x_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x01) != 0;
+
+        let result = (value >> 1) | ((old_carry as u8) << 7);
+        self.bus.write(address, result);
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(result);
+        self.pc += 1;
+
+        7
+    }
     // NOP _________________________________________________________________________________________
 
     fn nop_implied(&mut self) -> usize {
@@ -453,7 +555,7 @@ impl Cpu6502 {
     // Shifting opcodes ____________________________________________________________________________
     // LSR opcodes _________________________________________________________________________________
     fn lsr_accumulator(&mut self) -> usize {
-        let carry = self.a & 0b00000001 != 0;
+        let carry = self.a & 0x01 != 0;
         self.a >>= 1;
         self.set_flag(CARRY_FLAG, carry);
         self.update_nz_flags(self.a);
@@ -465,7 +567,7 @@ impl Cpu6502 {
     fn lsr_zero_page(&mut self) -> usize {
         let address = self.get_zero_page_addr();
         let mut value = self.bus.read(address);
-        let carry = value >> 7 != 0;
+        let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
         self.set_flag(CARRY_FLAG, carry);
@@ -478,7 +580,7 @@ impl Cpu6502 {
     fn lsr_zero_page_x(&mut self) -> usize {
         let address = self.get_zero_page_x_addr();
         let mut value = self.bus.read(address);
-        let carry = value >> 7 != 0;
+        let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
         self.set_flag(CARRY_FLAG, carry);
@@ -491,7 +593,7 @@ impl Cpu6502 {
     fn lsr_absolute(&mut self) -> usize {
         let address = self.get_absolute_addr();
         let mut value = self.bus.read(address);
-        let carry = value >> 7 != 0;
+        let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
         self.set_flag(CARRY_FLAG, carry);
@@ -504,7 +606,7 @@ impl Cpu6502 {
     fn lsr_absolute_x(&mut self) -> usize {
         let address = self.get_absolute_x_addr();
         let mut value = self.bus.read(address);
-        let carry = value >> 7 != 0;
+        let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
         self.set_flag(CARRY_FLAG, carry);
@@ -881,6 +983,7 @@ impl Cpu6502 {
     fn sta_absolute(&mut self) -> usize {
         let absolute_address = self.get_absolute_addr();
         self.bus.write(absolute_address, self.a);
+        self.pc += 1;
 
         4
     }
@@ -914,6 +1017,56 @@ impl Cpu6502 {
         self.pc += 1;
 
         6
+    }
+
+    // STX (store x) opcodes _______________________________________________________________________
+    fn stx_zero_page(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        self.bus.write(address, self.x);
+        self.pc += 1;
+
+        3
+    }
+
+    fn stx_zero_page_y(&mut self) -> usize {
+        let address = self.get_zero_page_y_addr();
+        self.bus.write(address, self.x);
+        self.pc += 1;
+
+        4
+    }
+
+    fn stx_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        self.bus.write(address, self.x);
+        self.pc += 1;
+
+        5
+    }
+
+    // STY (store y) opcodes _______________________________________________________________________
+    fn sty_zero_page(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        self.bus.write(address, self.y);
+        self.pc += 1;
+
+        3
+    }
+
+    fn sty_zero_page_x(&mut self) -> usize {
+        let address = self.get_zero_page_x_addr();
+        self.bus.write(address, self.y);
+        self.pc += 1;
+
+        4
+    }
+
+    fn sty_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        self.bus.write(address, self.y);
+        self.pc += 1;
+
+        5
     }
 
     // LDX opcodes ________________________________________________________________________________
@@ -968,6 +1121,57 @@ impl Cpu6502 {
         }
     }
 
+    // LDY (load y) opcodes ________________________________________________________________________
+    fn ldy_immediate(&mut self) -> usize {
+        self.pc += 1;
+        self.y = self.bus.read(self.pc);
+        self.pc += 1;
+        self.update_nz_flags(self.y);
+
+        2
+    }
+
+    fn ldy_zero_page(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        self.y = self.bus.read(address);
+        self.pc += 1;
+        self.update_nz_flags(self.y);
+
+        3
+    }
+
+    fn ldy_zero_page_x(&mut self) -> usize {
+        let address2 = self.get_zero_page_x_addr();
+        self.y = self.bus.read(address2);
+        self.pc += 1;
+        self.update_nz_flags(self.y);
+
+        4
+    }
+
+    fn ldy_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        self.y = self.bus.read(address);
+        self.pc += 1;
+        self.update_nz_flags(self.y);
+
+        4
+    }
+
+    fn ldy_absolute_x(&mut self) -> usize {
+        let base_address = self.bus.read(self.pc) as u16;
+        let address = self.get_absolute_x_addr();
+        self.y = self.bus.read(address);
+        self.pc += 1;
+        self.update_nz_flags(self.y);
+
+        // Checks if a page boundary was crossed to determine number of cycles
+        if  (base_address & 0xFF00) != (address & 0xFF00) {
+            5
+        } else {
+            4
+        }
+    }
     // Transfer opcodes ____________________________________________________________________________
 
     fn tax_implied(&mut self) -> usize {
@@ -1058,6 +1262,33 @@ impl Cpu6502 {
         let high_byte = self.stack_pop() as u16;
         let return_address = (high_byte << 8) | low_byte;
         self.pc = return_address + 1;
+
+        6
+    }
+
+    fn brk_implied(&mut self) -> usize {
+        self.pc += 2;
+        let low_byte_pc = self.pc as u8;
+        let high_byte_pc = (self.pc >> 8) as u8;
+        self.stack_push(high_byte_pc);
+        self.stack_push(low_byte_pc);
+        let flags_with_b = self.p | BREAK_FLAG;
+        self.stack_push(flags_with_b);
+        self.set_flag(INTERRUPT_DISABLE_FLAG, true);
+        let low_byte_jump = self.bus.read(0xFFFE) as u16;
+        let high_byte_jump = self.bus.read(0xFFFF) as u16;
+        let jump_address = (high_byte_jump << 8) | low_byte_jump;
+        self.pc = jump_address;
+
+        7
+    }
+
+    fn rti_implied(&mut self) -> usize {
+        let flags = self.stack_pop();
+        self.p = flags;
+        let pc_low_byte = self.stack_pop() as u16;
+        let pc_high_byte = self.stack_pop() as u16;
+        self.pc = (pc_high_byte << 8) | pc_low_byte;
 
         6
     }
@@ -1238,6 +1469,65 @@ impl Cpu6502 {
         self.pc += 1;
 
         4
+    }
+
+    fn cmp_absolute_y(&mut self) -> usize {
+        let address = self.get_absolute_y_addr();
+        let value = self.bus.read(address);
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+
+        4
+    }
+
+    fn cmp_absolute_x(&mut self) -> usize {
+        let address = self.get_absolute_x_addr();
+        let value = self.bus.read(address);
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+
+        4
+    }
+
+
+    fn cmp_indirect_x(&mut self) -> usize {
+        let address = self.get_indirect_x_addr();
+        let value = self.bus.read(address);
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+
+        6
+    }
+
+
+    fn cmp_indirect_y(&mut self) -> usize {
+        let base_address = self.pc;
+        let address = self.get_indirect_y_addr();
+        let value = self.bus.read(address);
+        let (result, borrow) = self.a.overflowing_sub(value);
+
+        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        if result == 0 {self.p |= ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
+        if !borrow {self.p |= CARRY_FLAG};
+        self.pc += 1;
+
+        self.check_if_page_crossed56(base_address, address)
     }
 
     fn cpx_immediate(&mut self) -> usize {
@@ -1611,7 +1901,6 @@ impl Cpu6502 {
     }
 
     fn sbc_indirect_x(&mut self) -> usize {
-        let start_addr = self.pc as u16;
         let end_addr = self.get_indirect_x_addr();
         let value = self.bus.read(end_addr) as u16;
         let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
