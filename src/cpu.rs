@@ -1,3 +1,4 @@
+use std::ascii::Char::CapitalR;
 use crate::cartridge::Cartridge;
 
 use crate::bus::Bus;
@@ -43,6 +44,16 @@ impl Cpu6502 {
         let opcode = self.bus.read(self.pc);
 // Main decoder hub
         let additional_cycles: usize = match opcode {
+            //ROL
+            0x2A => self.rol_accumulator(),
+            0x26 => self.rol_zero_page(),
+            0x36 => self.rol_zero_page_x(),
+            0x2E => self.rol_absolute(),
+            0x3E => self.rol_absolute_x(),
+
+            //NOP
+            0xEA => self.nop_implied(),
+
             // Set Flag
             0x38 => self.sec_implied(),
             0xF8 => self.sed_implied(),
@@ -325,6 +336,97 @@ impl Cpu6502 {
         } else {
             5
         }
+    }
+    // ROL opcodes _________________________________________________________________________________
+    fn rol_accumulator(&mut self) -> usize {
+        let old_carry = self.check_carry_flag();
+        let new_carry = (self.a & 0x80) != 0;
+
+        self.a = (self.a << 1) | (old_carry as u8);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.update_nz_flags(self.a);
+        self.pc += 1;
+
+        2
+    }
+
+    fn rol_zero_page(&mut self) -> usize {
+        let address = self.get_zero_page_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x80) != 0;
+
+        value = (value << 1) | (old_carry as u8);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.bus.write(address, value);
+        self.update_nz_flags(value);
+        self.pc += 1;
+
+        5
+    }
+
+    fn rol_zero_page_x(&mut self) -> usize {
+        let address = self.get_zero_page_x_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x80) != 0;
+
+        value = (value << 1) | (old_carry as u8);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.bus.write(address, value);
+        self.update_nz_flags(value);
+        self.pc += 1;
+
+        6
+    }
+
+    fn rol_absolute(&mut self) -> usize {
+        let address = self.get_absolute_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x80) != 0;
+
+        value = (value << 1) | (old_carry as u8);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.bus.write(address, value);
+        self.update_nz_flags(value);
+        self.pc += 1;
+
+        6
+    }
+
+    fn rol_absolute_x(&mut self) -> usize {
+        let address = self.get_absolute_x_addr();
+        let old_carry = self.check_carry_flag();
+        let mut value = self.bus.read(address);
+        self.bus.write(address, value);
+        let new_carry = (value & 0x80) != 0;
+
+        value = (value << 1) | (old_carry as u8);
+
+        self.set_flag(CARRY_FLAG, new_carry);
+        self.bus.write(address, value);
+        self.update_nz_flags(value);
+        self.pc += 1;
+
+        7
+    }
+
+
+
+    // NOP _________________________________________________________________________________________
+
+    fn nop_implied(&mut self) -> usize {
+        self.pc += 1;
+
+        2
     }
     // Set flag opcodes ____________________________________________________________________________
     fn sec_implied(&mut self) -> usize {
