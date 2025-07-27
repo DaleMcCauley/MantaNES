@@ -31,17 +31,24 @@ impl Cpu6502 {
             // Program counter
             pc: 0,
             // Stack Pointer
-            sp: 0,
+            sp: 0xFD,
             // Status flags
-            p: 0,
+            p: 0x24,
             cycles: 0,
             bus: Bus::new(),
         };
         cpu
     }
+
+    pub fn reset(&mut self) {
+        let low_byte = self.bus.read(0xFFFC) as u16;
+        let high_byte = self.bus.read(0xFFFD) as u16;
+        self.pc = (high_byte << 8) | low_byte;
+        self.sp = 0xFD;
+        self.p = 0x24;
+    }
     pub fn load_rom(&mut self, cartridge: Cartridge) {
-        let game_code = cartridge.prg_rom;
-        game_code.iter().enumerate().for_each(|(i, byte)| {self.bus.write((0x8000 + i) as u16, *byte)});
+        self.bus.load_cartridge(cartridge);
     }
     pub fn step(&mut self) {
         let opcode = self.bus.read(self.pc);
@@ -225,17 +232,6 @@ impl Cpu6502 {
             0xDE => self.dec_absolute_x(),
             0xCA => self.dex_implied(),
             0x88 => self.dey_implied(),
-
-
-
-
-
-
-
-
-
-
-
 
             _ => {println!("Opcode not interpreted: ;{}", opcode);
                 0},
@@ -511,7 +507,7 @@ impl Cpu6502 {
     fn ror_absolute_x(&mut self) -> usize {
         let (base_address, address) = self.get_absolute_x_addr();
         let old_carry = self.check_carry_flag();
-        let mut value = self.bus.read(address);
+        let value = self.bus.read(address);
         self.bus.write(address, value);
         let new_carry = (value & 0x01) != 0;
 
