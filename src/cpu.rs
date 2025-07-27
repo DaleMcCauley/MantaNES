@@ -52,6 +52,7 @@ impl Cpu6502 {
     }
     pub fn step(&mut self) {
         let opcode = self.bus.read(self.pc);
+        println!("PC: {:#06x}, Opcode: {:#04X}", self.pc, opcode);
 // Main decoder hub
         let additional_cycles: usize = match opcode {
             // ROR
@@ -60,22 +61,18 @@ impl Cpu6502 {
             0x76 => self.ror_zero_page_x(),
             0x6E => self.ror_absolute(),
             0x7E => self.ror_absolute_x(),
-
             // ROL
             0x2A => self.rol_accumulator(),
             0x26 => self.rol_zero_page(),
             0x36 => self.rol_zero_page_x(),
             0x2E => self.rol_absolute(),
             0x3E => self.rol_absolute_x(),
-
             //NOP
             0xEA => self.nop_implied(),
-
             // Set Flag
             0x38 => self.sec_implied(),
             0xF8 => self.sed_implied(),
             0x78 => self.sei_implied(),
-
             // Shift
             0x4A => self.lsr_accumulator(),
             0x46 => self.lsr_zero_page(),
