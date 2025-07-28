@@ -1,5 +1,5 @@
 use crate::cartridge::Cartridge;
-
+use crate::flags::{FlagRegister, cpu};
 use crate::bus::Bus;
 pub struct Cpu6502 {
     pub a: u8,
@@ -13,14 +13,6 @@ pub struct Cpu6502 {
 
 }
 
-// Flag definitions
-const CARRY_FLAG:u8 = 0b00000001;
-const ZERO_FLAG:u8 = 0b00000010;
-const INTERRUPT_DISABLE_FLAG:u8 = 0b00000100;
-const DECIMAL_FLAG:u8 = 0b00001000;
-const OVERFLOW_FLAG:u8 = 0b01000000;
-const NEGATIVE_FLAG:u8 = 0b10000000;
-const BREAK_FLAG:u8 = 0b00010000;
 impl Cpu6502 {
 
     pub fn init_cpu() -> Cpu6502 {
@@ -36,6 +28,7 @@ impl Cpu6502 {
             p: 0x24,
             cycles: 0,
             bus: Bus::new(),
+
         };
         cpu
     }
@@ -43,7 +36,14 @@ impl Cpu6502 {
     pub fn reset(&mut self) {
         let low_byte = self.bus.read(0xFFFC) as u16;
         let high_byte = self.bus.read(0xFFFD) as u16;
-        self.pc = (high_byte << 8) | low_byte;
+        let reset_vector = (high_byte << 8) | low_byte;
+        if reset_vector == 0 {
+            println!("Reset vector is zero, defaulting to 0x8000");
+            self.pc = 0x8000
+        } else {
+            self.pc = reset_vector;
+            println!("Loaded reset vector: {}", reset_vector);
+        }
         self.sp = 0xFD;
         self.p = 0x24;
     }
@@ -56,7 +56,7 @@ impl Cpu6502 {
 // Main decoder hub
         let additional_cycles: usize = match opcode {
             // ROR
-            0x6A => self.ror_accumulator(),
+            0x6A => {println!("ror_accumulator"); self.ror_accumulator()},
             0x66 => self.ror_zero_page(),
             0x76 => self.ror_zero_page_x(),
             0x6E => self.ror_absolute(),
@@ -230,11 +230,12 @@ impl Cpu6502 {
             0xCA => self.dex_implied(),
             0x88 => self.dey_implied(),
 
-            _ => {println!("Opcode not interpreted: ;{}", opcode);
+            _ => {println!("Opcode not interpreted: {}", opcode);
                 0},
         };
         self.cycles += additional_cycles;
     }
+    /*
     fn set_flag(&mut self, flag:u8, condition: bool) {
         if condition {
             self.p |= flag;
@@ -242,25 +243,26 @@ impl Cpu6502 {
             self.p &= !(flag);
         }
     }
+         */
     fn update_nz_flags(&mut self, value: u8) {
-        self.set_flag(ZERO_FLAG, value == 0);
-        self.set_flag(NEGATIVE_FLAG, (value & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, value == 0);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (value & 0x80) != 0);
     }
 
     fn check_zero_flag(&self) -> bool {
-        self.p & ZERO_FLAG != 0b00000000
+        self.p & cpu::ZERO_FLAG != 0b00000000
     }
 
     fn check_negative_flag(&self) -> bool {
-        self.p & NEGATIVE_FLAG != 0b00000000
+        self.p & cpu::NEGATIVE_FLAG != 0b00000000
     }
 
     fn check_carry_flag(&self) -> bool {
-        self.p & CARRY_FLAG != 0b00000000
+        self.p & cpu::CARRY_FLAG != 0b00000000
     }
 
     fn check_overflow_flag(&self) -> bool {
-        self.p & OVERFLOW_FLAG != 0b00000000
+        self.p & cpu::OVERFLOW_FLAG != 0b00000000
     }
     fn stack_push(&mut self, input: u8) {
         self.bus.write((0x0100 + self.sp as u16), input);
@@ -363,7 +365,7 @@ impl Cpu6502 {
 
         self.a = (self.a << 1) | (old_carry as u8);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(self.a);
         self.pc += 1;
 
@@ -379,7 +381,7 @@ impl Cpu6502 {
 
         value = (value << 1) | (old_carry as u8);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.bus.write(address, value);
         self.update_nz_flags(value);
         self.pc += 1;
@@ -396,7 +398,7 @@ impl Cpu6502 {
 
         value = (value << 1) | (old_carry as u8);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.bus.write(address, value);
         self.update_nz_flags(value);
         self.pc += 1;
@@ -413,7 +415,7 @@ impl Cpu6502 {
 
         value = (value << 1) | (old_carry as u8);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.bus.write(address, value);
         self.update_nz_flags(value);
         self.pc += 1;
@@ -430,7 +432,7 @@ impl Cpu6502 {
 
         value = (value << 1) | (old_carry as u8);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.bus.write(address, value);
         self.update_nz_flags(value);
         self.pc += 1;
@@ -446,7 +448,7 @@ impl Cpu6502 {
 
         self.a = (self.a >> 1) | ((old_carry as u8) << 7);
 
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(self.a);
         self.pc += 1;
 
@@ -462,7 +464,7 @@ impl Cpu6502 {
 
         let result = (value >> 1) | ((old_carry as u8) << 7);
         self.bus.write(address, result);
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(result);
         self.pc += 1;
 
@@ -478,7 +480,7 @@ impl Cpu6502 {
 
         let result = (value >> 1) | ((old_carry as u8) << 7);
         self.bus.write(address, result);
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(result);
         self.pc += 1;
 
@@ -494,7 +496,7 @@ impl Cpu6502 {
 
         let result = (value >> 1) | ((old_carry as u8) << 7);
         self.bus.write(address, result);
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(result);
         self.pc += 1;
 
@@ -510,7 +512,7 @@ impl Cpu6502 {
 
         let result = (value >> 1) | ((old_carry as u8) << 7);
         self.bus.write(address, result);
-        self.set_flag(CARRY_FLAG, new_carry);
+        self.p.set_flag(cpu::CARRY_FLAG, new_carry);
         self.update_nz_flags(result);
         self.pc += 1;
 
@@ -525,21 +527,21 @@ impl Cpu6502 {
     }
     // Set flag opcodes ____________________________________________________________________________
     fn sec_implied(&mut self) -> usize {
-        self.p |= CARRY_FLAG;
+        self.p |= cpu::CARRY_FLAG;
         self.pc += 1;
 
         2
     }
 
     fn sei_implied(&mut self) -> usize {
-        self.p |= INTERRUPT_DISABLE_FLAG;
+        self.p |= cpu::INTERRUPT_DISABLE_FLAG;
         self.pc += 1;
 
         2
     }
 
     fn sed_implied(&mut self,) -> usize {
-        self.p |= DECIMAL_FLAG;
+        self.p |= cpu::DECIMAL_FLAG;
         self.pc += 1;
 
         2
@@ -550,7 +552,7 @@ impl Cpu6502 {
     fn lsr_accumulator(&mut self) -> usize {
         let carry = self.a & 0x01 != 0;
         self.a >>= 1;
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(self.a);
         self.pc += 1;
 
@@ -563,7 +565,7 @@ impl Cpu6502 {
         let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -576,7 +578,7 @@ impl Cpu6502 {
         let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -589,7 +591,7 @@ impl Cpu6502 {
         let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -602,7 +604,7 @@ impl Cpu6502 {
         let carry = value & 0x01 != 0;
         value >>= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -613,7 +615,7 @@ impl Cpu6502 {
     fn asl_accumulator(&mut self) -> usize {
         let carry = self.a >> 7 != 0;
         self.a <<= 1;
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(self.a);
         self.pc += 1;
 
@@ -626,7 +628,7 @@ impl Cpu6502 {
         let carry = value >> 7 != 0;
         value <<= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -639,7 +641,7 @@ impl Cpu6502 {
         let carry = value >> 7 != 0;
         value <<= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -652,7 +654,7 @@ impl Cpu6502 {
         let carry = value >> 7 != 0;
         value <<= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -665,7 +667,7 @@ impl Cpu6502 {
         let carry = value >> 7 != 0;
         value <<= 1;
         self.bus.write(address, value);
-        self.set_flag(CARRY_FLAG, carry);
+        self.p.set_flag(cpu::CARRY_FLAG, carry);
         self.update_nz_flags(value);
         self.pc += 1;
 
@@ -674,28 +676,28 @@ impl Cpu6502 {
     // Flag Clear opcodes __________________________________________________________________________
 
     fn clc_implied(&mut self) -> usize {
-        self.set_flag(CARRY_FLAG, false);
+        self.p.set_flag(cpu::CARRY_FLAG, false);
         self.pc += 1;
 
         2
     }
 
     fn cld_implied(&mut self) -> usize {
-        self.set_flag(DECIMAL_FLAG, false);
+        self.p.set_flag(cpu::DECIMAL_FLAG, false);
         self.pc += 1;
 
         2
     }
 
     fn cli_implied(&mut self) -> usize {
-        self.set_flag(INTERRUPT_DISABLE_FLAG, false);
+        self.p.set_flag(cpu::INTERRUPT_DISABLE_FLAG, false);
         self.pc += 1;
 
         2
     }
 
     fn clv_implied(&mut self) -> usize {
-        self.set_flag(OVERFLOW_FLAG, false);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, false);
         self.pc += 1;
 
         2
@@ -1243,9 +1245,9 @@ impl Cpu6502 {
         let high_byte_pc = (self.pc >> 8) as u8;
         self.stack_push(high_byte_pc);
         self.stack_push(low_byte_pc);
-        let flags_with_b = self.p | BREAK_FLAG;
+        let flags_with_b = self.p | cpu::BREAK_FLAG;
         self.stack_push(flags_with_b);
-        self.set_flag(INTERRUPT_DISABLE_FLAG, true);
+        self.p.set_flag(cpu::INTERRUPT_DISABLE_FLAG, true);
         let low_byte_jump = self.bus.read(0xFFFE) as u16;
         let high_byte_jump = self.bus.read(0xFFFF) as u16;
         let jump_address = (high_byte_jump << 8) | low_byte_jump;
@@ -1404,11 +1406,11 @@ impl Cpu6502 {
     fn cmp_immediate(&mut self) -> usize {
         self.pc += 1;
         let (result, borrow) = (self.a).overflowing_sub(self.bus.read(self.pc));
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
 
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         2
@@ -1419,10 +1421,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         3
@@ -1433,10 +1435,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         4
@@ -1447,10 +1449,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         4
@@ -1461,10 +1463,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         4
@@ -1476,10 +1478,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         6
@@ -1491,10 +1493,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.a.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         self.check_if_page_crossed56(base_address, address)
@@ -1503,11 +1505,11 @@ impl Cpu6502 {
     fn cpx_immediate(&mut self) -> usize {
         self.pc += 1;
         let (result, borrow) = self.x.overflowing_sub(self.bus.read(self.pc));
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
 
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         2
@@ -1518,10 +1520,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.x.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         3
@@ -1532,10 +1534,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.x.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         4
@@ -1544,11 +1546,11 @@ impl Cpu6502 {
     fn cpy_immediate(&mut self) -> usize {
         self.pc += 1;
         let (result, borrow) = self.y.overflowing_sub(self.bus.read(self.pc));
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
 
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         2
@@ -1559,10 +1561,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.y.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         3
@@ -1573,10 +1575,10 @@ impl Cpu6502 {
         let value = self.bus.read(address);
         let (result, borrow) = self.y.overflowing_sub(value);
 
-        self.p &= !(ZERO_FLAG | NEGATIVE_FLAG | CARRY_FLAG);
-        if result == 0 {self.p |= ZERO_FLAG};
-        if result & 0x80 != 0 {self.p |= NEGATIVE_FLAG};
-        if !borrow {self.p |= CARRY_FLAG};
+        self.p &= !(cpu::ZERO_FLAG | cpu::NEGATIVE_FLAG | cpu::CARRY_FLAG);
+        if result == 0 {self.p |= cpu::ZERO_FLAG};
+        if result & 0x80 != 0 {self.p |= cpu::NEGATIVE_FLAG};
+        if !borrow {self.p |= cpu::CARRY_FLAG};
         self.pc += 1;
 
         4
@@ -1587,16 +1589,16 @@ impl Cpu6502 {
     fn adc_immediate(&mut self) -> usize {
         self.pc += 1;
         let value = self.bus.read(self.pc);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1607,16 +1609,16 @@ impl Cpu6502 {
     fn adc_zero_page(&mut self) -> usize {
         let address = self.get_zero_page_addr();
         let value = self.bus.read(address);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1627,16 +1629,16 @@ impl Cpu6502 {
     fn adc_zero_page_x(&mut self) -> usize {
         let address = self.get_zero_page_x_addr();
         let value = self.bus.read(address);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1648,16 +1650,16 @@ impl Cpu6502 {
     fn adc_absolute(&mut self) -> usize {
         let address = self.get_absolute_addr();
         let value = self.bus.read(address);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1667,16 +1669,16 @@ impl Cpu6502 {
     fn adc_absolute_x(&mut self) -> usize {
         let (base_address, end_addr) = self.get_absolute_x_addr();
         let value = self.bus.read(end_addr);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1686,16 +1688,16 @@ impl Cpu6502 {
     fn adc_absolute_y(&mut self) -> usize {
         let (base_addr, end_addr) = self.get_absolute_y_addr();
         let value = self.bus.read(end_addr);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1706,16 +1708,16 @@ impl Cpu6502 {
     fn adc_indirect_x(&mut self) -> usize {
         let end_addr = self.get_indirect_x_addr();
         let value = self.bus.read(end_addr);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1726,16 +1728,16 @@ impl Cpu6502 {
     fn adc_indirect_y(&mut self) -> usize {
         let (base_adress, end_addr) = self.get_indirect_y_addr();
         let value = self.bus.read(end_addr);
-        let result = self.a as u16 + value as u16 + (self.p & CARRY_FLAG) as u16;
+        let result = self.a as u16 + value as u16 + (self.p & cpu::CARRY_FLAG) as u16;
 
-        self.set_flag(CARRY_FLAG, result > 255);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result > 255);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign == val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1749,16 +1751,16 @@ impl Cpu6502 {
     fn sbc_immediate(&mut self) -> usize {
         self.pc += 1;
         let value = self.bus.read(self.pc) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1769,16 +1771,16 @@ impl Cpu6502 {
     fn sbc_zero_page(&mut self) -> usize {
         let address = self.get_zero_page_addr();
         let value = self.bus.read(address) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1789,16 +1791,16 @@ impl Cpu6502 {
     fn sbc_zero_page_x(&mut self) -> usize {
         let address = self.get_zero_page_x_addr();
         let value = self.bus.read(address) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1809,16 +1811,16 @@ impl Cpu6502 {
     fn sbc_absolute(&mut self) -> usize {
         let address = self.get_absolute_addr();
         let value = self.bus.read(address) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1829,16 +1831,16 @@ impl Cpu6502 {
     fn sbc_absolute_x(&mut self) -> usize {
         let (base_addr, end_addr) = self.get_absolute_x_addr();
         let value = self.bus.read(end_addr) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1848,16 +1850,16 @@ impl Cpu6502 {
     fn sbc_absolute_y(&mut self) -> usize {
         let (base_addr, end_addr) = self.get_absolute_y_addr();
         let value = self.bus.read(end_addr) as u16;
-        let result = self.a as u16 - value - (1 - (self.p  & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p  & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1868,16 +1870,16 @@ impl Cpu6502 {
     fn sbc_indirect_x(&mut self) -> usize {
         let end_addr = self.get_indirect_x_addr();
         let value = self.bus.read(end_addr) as u16;
-        let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -1888,16 +1890,16 @@ impl Cpu6502 {
     fn sbc_indirect_y(&mut self) -> usize {
         let (base_address, end_addr) = self.get_indirect_y_addr();
         let value = self.bus.read(end_addr) as u16;
-        let result = self.a as u16 - value - (1 - (self.p & CARRY_FLAG) as u16);
+        let result = self.a as u16 - value - (1 - (self.p & cpu::CARRY_FLAG) as u16);
 
-        self.set_flag(CARRY_FLAG, result < 256);
-        self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
-        self.set_flag(ZERO_FLAG, (result & 0xFF) == 0);
+        self.p.set_flag(cpu::CARRY_FLAG, result < 256);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, (result & 0x80) != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, (result & 0xFF) == 0);
 
         let a_sign = self.a & 0x80;
         let val_sign = value as u8 & 0x80;
         let result_sign = result as u8 & 0x80;
-        self.set_flag(OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, a_sign != val_sign && a_sign != result_sign);
 
         self.a = result as u8;
         self.pc += 1;
@@ -2128,9 +2130,9 @@ impl Cpu6502 {
         let address = self.get_zero_page_addr();
         let value = self.bus.read(address);
         let result = value & self.a;
-        self.set_flag(ZERO_FLAG, result == 0);
-        self.set_flag(OVERFLOW_FLAG, value & OVERFLOW_FLAG != 0);
-        self.set_flag(NEGATIVE_FLAG, value & NEGATIVE_FLAG != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, result == 0);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, value & cpu::OVERFLOW_FLAG != 0);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, value & cpu::NEGATIVE_FLAG != 0);
         self.pc += 1;
 
         3
@@ -2140,9 +2142,9 @@ impl Cpu6502 {
         let address = self.get_absolute_addr();
         let value = self.bus.read(address);
         let result = value & self.a;
-        self.set_flag(ZERO_FLAG, result == 0);
-        self.set_flag(OVERFLOW_FLAG, value & OVERFLOW_FLAG != 0);
-        self.set_flag(NEGATIVE_FLAG, value & NEGATIVE_FLAG != 0);
+        self.p.set_flag(cpu::ZERO_FLAG, result == 0);
+        self.p.set_flag(cpu::OVERFLOW_FLAG, value & cpu::OVERFLOW_FLAG != 0);
+        self.p.set_flag(cpu::NEGATIVE_FLAG, value & cpu::NEGATIVE_FLAG != 0);
         self.pc += 1;
 
         4

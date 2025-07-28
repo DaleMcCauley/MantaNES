@@ -27,6 +27,10 @@ impl Cartridge {
             mirroring_vert: rom_data[6] & 0x01,
             mapper_number: ((rom_data[7] & 0xF0) <<4) | ((rom_data[6] & 0xF0) >> 4) ,
         };
+        println!("ROM file size: {} bytes", rom_data.len());
+        println!("PRG ROM size: {} bytes", metadata.prg_rom_size_bytes);
+        println!("CHR ROM size: {} bytes", metadata.chr_rom_size_bytes);
+
         Cartridge {
             prg_rom: rom_data[16..16 + metadata.prg_rom_size_bytes as usize].to_vec(),
             chr_rom: rom_data[16 + metadata.prg_rom_size_bytes as usize.. 16 + metadata.prg_rom_size_bytes + metadata.chr_rom_size_bytes].to_vec(),
