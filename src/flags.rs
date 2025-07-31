@@ -2,6 +2,7 @@ use crate::ppu::Ppu;
 
 pub trait FlagRegister {
     fn set_flag(&mut self, flag:u8, condition: bool);
+    fn check_flag(&self, flag:u8) -> bool;
 }
 
 impl FlagRegister for u8 {
@@ -11,6 +12,10 @@ impl FlagRegister for u8 {
         } else {
             *self &= !flag;
         }
+    }
+    
+    fn check_flag(&self, flag:u8) -> bool {
+        (*self & flag) == flag
     }
 }
 

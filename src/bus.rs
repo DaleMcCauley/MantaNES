@@ -1,4 +1,5 @@
 use crate::cartridge::Cartridge;
+use crate::cpu::Cpu6502;
 use crate::ppu::Ppu;
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
@@ -83,6 +84,13 @@ impl Bus {
             } else {
                 0
             }
+        }
+
+        pub fn step(&mut self, cpu: &mut Cpu6502) {
+            self.ppu.step();
+
+            if
+
         }
 
     }
