@@ -1,19 +1,25 @@
 use crate::cartridge::Cartridge;
 use crate::cpu::Cpu6502;
+use crate::flags::FlagRegister;
+use crate::flags::ppu::{VBLANK_FLAG, V_BLANK_NMI_ENABLE};
 use crate::ppu::Ppu;
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
+    cpu: Cpu6502,
     ppu: Ppu,
-//    apu: Apu,
     cartridge: Option<Cartridge>,
+
+    system_clock: usize
 }
 
 impl Bus {
     pub fn new() -> Bus {
         Bus {
+            cpu: Cpu6502::init_cpu(),
             cpu_ram: [0; 0x0800],
+            ppu: Ppu::new(),
             cartridge: None,
-            ppu: Ppu::new()
+            system_clock: 0
         }
     }
     pub fn load_cartridge(&mut self, cartridge: Cartridge) {
@@ -86,10 +92,17 @@ impl Bus {
             }
         }
 
-        pub fn step(&mut self, cpu: &mut Cpu6502) {
+        pub fn step(&mut self) {
             self.ppu.step();
 
-            if
+            let clock = self.system_clock;
+            if clock % 3 == 0 {
+                self.cpu.step(&mut self);
+            }
+
+            if (self.ppu.nmi) {
+
+            }
 
         }
 

@@ -6,9 +6,9 @@ use crate::flags::ppu::{VBLANK_FLAG, V_BLANK_NMI_ENABLE};
 
 pub(crate) struct Ppu {
     // Registers
-    ctrl: u8,
+    pub(crate) ctrl: u8,
     mask: u8,
-    status: u8,
+    pub(crate) status: u8,
     oamaddr: u8,
     oamdata: u8,
     scroll_low: u8,
@@ -24,9 +24,9 @@ pub(crate) struct Ppu {
     ppu_data_buffer: u8,
     ppu_address: u16,
 
-    nmi: bool,
-    scan_line: u16,
-    cycle: usize,
+    pub(crate) nmi: bool,
+    pub(crate) scan_line: u16,
+    pub(crate) cycle: usize,
 }
 
 impl Ppu {
@@ -94,9 +94,9 @@ impl Ppu {
             },
             0x0002 => {
             },
-            0x0003 => 0,
-            0x0004 => 0,
-            0x0005 => 0,
+            0x0003 => {},
+            0x0004 => {},
+            0x0005 => {},
             0x0006 => { // PPU Address
                 if self.address_latch == 0 {
                     self.ppu_address = (self.ppu_address & 0x00FF) | ((value as u16)  << 8);
@@ -111,7 +111,7 @@ impl Ppu {
                 self.ppu_write(self.ppu_address, value);
                 self.ppu_address += 1;
             },
-            _ => 0,
+            _ => {},
         }
     }
 
