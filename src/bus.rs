@@ -5,15 +5,16 @@ use crate::flags::ppu::{VBLANK_FLAG, V_BLANK_NMI_ENABLE};
 use crate::ppu::Ppu;
 
 pub(crate) trait Memory {
-    fn read(&mut self, ppu: Ppu, address: u16) -> u8;
-    fn write(&mut self, ppu: Ppu, address: u16, value: u8);
-    fn cpu_read_ppu(&mut self, ppu: Ppu, address: u16) -> u8;
-    fn cpu_write_ppu(&mut self, ppu: Ppu, address: u16, value: u8);
+    fn read(&mut self, address: u16) -> u8;
+    fn write(&mut self, address: u16, value: u8);
+    fn cpu_read_ppu(&mut self, address: u16) -> u8;
+    fn cpu_write_ppu(&mut self, address: u16, value: u8);
     fn load_cartridge(&mut self, cartridge: Cartridge);
 }
 pub struct Bus {
     cpu_ram: [u8; 0x0800],
     cartridge: Option<Cartridge>,
+    pub(crate) ppu: Ppu,
 
 }
 
@@ -22,6 +23,7 @@ impl Bus {
         Bus {
             cpu_ram: [0; 0x0800],
             cartridge: None,
+            ppu: Ppu::new(),
         }
     }
 
@@ -49,7 +51,7 @@ impl Bus {
     }
 
 impl Memory for Bus {
-    fn read(&mut self, ppu: Ppu, address: u16) -> u8 {
+    fn read(&mut self, address: u16) -> u8 {
         match address {
             // Internal RAM
             0x0000..=0x1FFF => {
@@ -58,7 +60,7 @@ impl Memory for Bus {
             // PPU Registers
             0x2000..=0x3FFF => {
                 println!("Reading ppu register");
-                self.cpu_read_ppu(ppu,address)
+                self.cpu_read_ppu(address)
             },
 
             // APU and I/O registers
@@ -79,7 +81,7 @@ impl Memory for Bus {
             _ => { 0 }
         }
     }
-    fn write(&mut self,  ppu: Ppu, address: u16, value: u8) {
+    fn write(&mut self, address: u16, value: u8) {
         match address {
             // Internal RAM
             0x0000..=0x1FFF => {
@@ -87,7 +89,7 @@ impl Memory for Bus {
             },
             // PPU Registers
             0x2000..=0x3FFF => {
-                self.cpu_write_ppu(ppu, 0, 0)
+                self.cpu_write_ppu(0, 0)
             },
 
             // APU and I/O registers
@@ -98,15 +100,15 @@ impl Memory for Bus {
             _ => ()
         }
     }
-    fn cpu_read_ppu(&mut self, mut ppu: Ppu, address: u16) -> u8 {
+    fn cpu_read_ppu(&mut self, address: u16) -> u8 {
         match address {
             0x0000 => 0,
             0x0001 => 0,
             0x0002 => {
-                ppu.status.set_flag(VBLANK_FLAG, true);
-                let value = (ppu.status & 0xE0) | (ppu.ppu_data_buffer & 0x1F);
-                ppu.status.set_flag(VBLANK_FLAG, false);
-                ppu.address_latch = 0;
+                self.ppu.status.set_flag(VBLANK_FLAG, true);
+                let value = (self.ppu.status & 0xE0) | (self.ppu.ppu_data_buffer & 0x1F);
+                self.ppu.status.set_flag(VBLANK_FLAG, false);
+                self.ppu.address_latch = 0;
                 value
             },
             0x0003 => 0,
@@ -114,26 +116,26 @@ impl Memory for Bus {
             0x0005 => 0,
             0x0006 => 0,
             0x0007 => {
-                let mut value = ppu.ppu_data_buffer;
-                ppu.ppu_data_buffer = self.ppu_read(address);
+                let mut value = self.ppu.ppu_data_buffer;
+                self.ppu.ppu_data_buffer = self.ppu.ppu_read(address);
 
-                if (ppu.ppu_address > 0x3f00) {
-                    value = ppu.ppu_data_buffer;
+                if (self.ppu.ppu_address > 0x3f00) {
+                    value = self.ppu.ppu_data_buffer;
                 }
-                ppu.ppu_address += 1;
+                self.ppu.ppu_address += 1;
                 value
             },
             _ => 0,
         }
     }
 
-    fn  cpu_write_ppu(&mut self, mut ppu: Ppu, address: u16, value: u8) {
+    fn  cpu_write_ppu(&mut self, address: u16, value: u8) {
         match address {
             0x0000 => {
-                ppu.ctrl = value;
+                self.ppu.ctrl = value;
             },
             0x0001 => {
-                ppu.mask = value;
+                self.ppu.mask = value;
             },
             0x0002 => {
             },
@@ -141,18 +143,18 @@ impl Memory for Bus {
             0x0004 => {},
             0x0005 => {},
             0x0006 => { // PPU Address
-                if ppu.address_latch == 0 {
-                    ppu.ppu_address = (ppu.ppu_address & 0x00FF) | ((value as u16)  << 8);
-                    ppu.address_latch = 1;
+                if self.ppu.address_latch == 0 {
+                    self.ppu.ppu_address = (self.ppu.ppu_address & 0x00FF) | ((value as u16)  << 8);
+                    self.ppu.address_latch = 1;
                 } else {
-                    ppu.ppu_address = (ppu.ppu_address & 0xFF00) | (value as u16);
-                    ppu.address_latch = 0;
+                    self.ppu.ppu_address = (self.ppu.ppu_address & 0xFF00) | (value as u16);
+                    self.ppu.address_latch = 0;
                 }
 
             },
             0x0007 => {
-                ppu.ppu_write(ppu.ppu_address, value);
-                ppu.ppu_address += 1;
+                self.ppu.ppu_write(self.ppu.ppu_address, value);
+                self.ppu.ppu_address += 1;
             },
             _ => {},
         }

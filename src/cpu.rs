@@ -1,6 +1,8 @@
 use crate::cartridge::Cartridge;
 use crate::flags::{FlagRegister, cpu};
 use crate::bus::{Bus, Memory};
+use crate::ppu::Ppu;
+
 pub struct Cpu6502 {
     pub a: u8,
     pub x: u8,

@@ -58,7 +58,7 @@ impl Ppu {
 
 
 
-    fn ppu_read(&mut self, address: u16) -> u8 {
+    pub(crate) fn ppu_read(&mut self, address: u16) -> u8 {
         let masked_address = address & 0x3FFF;
 
         0
