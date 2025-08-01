@@ -87,7 +87,7 @@ impl Memory for Bus {
             },
             // PPU Registers
             0x2000..=0x3FFF => {
-                self.cpu_write_ppu(ppu)
+                self.cpu_write_ppu(ppu, 0, 0)
             },
 
             // APU and I/O registers
