@@ -1,11 +1,12 @@
 use crate::cpu::Cpu6502;
-
+#[derive(Clone, Debug)]
 pub struct Cartridge {
     pub prg_rom: Vec<u8>,
     pub chr_rom: Vec<u8>,
     pub metadata: RomMetadata
 }
 
+#[derive(Clone, Debug)]
 pub struct RomMetadata {
     pub prg_rom_size_bytes : usize,
     pub chr_rom_size_bytes: usize,

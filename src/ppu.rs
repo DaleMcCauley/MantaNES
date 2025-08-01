@@ -17,6 +17,7 @@ pub(crate) struct Ppu {
     oamdma: u8,
 
     // Memory
+    pub(crate) chr_rom: Vec<u8>,
     name_table: [[u8; 1024]; 2],
     pallete_table: [u8; 32],
 
@@ -43,6 +44,7 @@ impl Ppu {
             data: 0,
             oamdma: 0,
 
+            chr_rom: Vec::new(),
             name_table: [[0; 1024]; 2],
             pallete_table: [0; 32],
 
@@ -58,12 +60,27 @@ impl Ppu {
 
 
 
-    pub(crate) fn ppu_read(&mut self, address: u16) -> u8 {
-        let masked_address = address & 0x3FFF;
+        pub(crate) fn ppu_read(&mut self, address: u16) -> u8 {
+            let masked_address = address & 0x3FFF;
 
-        0
+            match masked_address {
+                0x0000..=0x1FFF => { // cartridge chr-rom
+                    self.chr_rom[masked_address as usize]
+                },
+                0x2000..=0x2FFF => { // name-table array
+
+                },
+                0x3000..=0x3EFF => { // mirror of name table
+
+                },
+                0x3F00..=0x3FFF => {   // palette table with special mirroring
+
+                },
+                _ => 0
+            }
+
+
     }
-
     pub(crate) fn ppu_write(&mut self, address: u16, value: u8) {
         let masked_address = address & 0x3FFF;
     }

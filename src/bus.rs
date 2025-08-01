@@ -161,6 +161,7 @@ impl Memory for Bus {
     }
     fn load_cartridge(&mut self, cartridge: Cartridge) {
         self.cartridge = Some(cartridge);
+        self.ppu.chr_rom = self.cartridge.clone().unwrap().chr_rom
     }
 
 }
