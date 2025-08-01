@@ -5,10 +5,10 @@ use crate::flags::ppu::{VBLANK_FLAG, V_BLANK_NMI_ENABLE};
 use crate::ppu::Ppu;
 
 pub(crate) trait Memory {
-    fn read(&mut self, address: u16) -> u8;
-    fn write(&mut self, address: u16, value: u8);
+    fn read(&mut self, ppu: Ppu, address: u16) -> u8;
+    fn write(&mut self, ppu: Ppu, address: u16, value: u8);
     fn cpu_read_ppu(&mut self, ppu: Ppu, address: u16) -> u8;
-    fn cpu_write_ppu(&mut self, mut ppu: Ppu, address: u16, value: u8);
+    fn cpu_write_ppu(&mut self, ppu: Ppu, address: u16, value: u8);
     fn load_cartridge(&mut self, cartridge: Cartridge);
 }
 pub struct Bus {
@@ -49,7 +49,7 @@ impl Bus {
     }
 
 impl Memory for Bus {
-    fn read(&mut self, address: u16) -> u8 {
+    fn read(&mut self, ppu: Ppu, address: u16) -> u8 {
         match address {
             // Internal RAM
             0x0000..=0x1FFF => {
@@ -58,7 +58,7 @@ impl Memory for Bus {
             // PPU Registers
             0x2000..=0x3FFF => {
                 println!("Reading ppu register");
-                self.cpu_read_ppu(address)
+                self.cpu_read_ppu(ppu,address)
             },
 
             // APU and I/O registers
@@ -79,7 +79,7 @@ impl Memory for Bus {
             _ => { 0 }
         }
     }
-    fn write(&mut self, mut ppu: Ppu address: u16, value: u8) {
+    fn write(&mut self,  ppu: Ppu, address: u16, value: u8) {
         match address {
             // Internal RAM
             0x0000..=0x1FFF => {
